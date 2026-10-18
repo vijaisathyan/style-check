@@ -15,7 +15,6 @@ xcodebuild build \
   -configuration Release \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$DERIVED" \
-  -skipMacroValidation \
   -skipPackagePluginValidation \
   -quiet
 

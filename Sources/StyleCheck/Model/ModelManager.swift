@@ -1,7 +1,6 @@
 import Foundation
 import HuggingFace
 import MLX
-import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
 import SwiftUI
@@ -102,14 +101,14 @@ final class ModelManager: ObservableObject {
         let model = selectedModel
         status = .downloading(0)
         do {
-            let downloader: any Downloader = #hubDownloader()
+            let downloader: any Downloader = HubDownloader()
             let url = try await downloader.download(
                 id: model.id, revision: "main",
                 matching: ["*.safetensors", "*.json", "*.jinja"],
                 useLatest: false
-            ) { progress in
+            ) { [weak self] progress in
                 let fraction = progress.fractionCompleted
-                Task { @MainActor [weak self] in
+                Task { @MainActor in
                     guard let self, case .downloading = self.status else { return }
                     self.status = .downloading(fraction)
                 }
@@ -150,10 +149,11 @@ final class ModelManager: ObservableObject {
         let task = Task { () throws -> ModelContainer in
             let configuration = ModelConfiguration(
                 directory: directory, extraEOSTokens: model.extraEOSTokens)
-            // Loading from a local folder never touches the network.
+            // Loading from a local folder never touches the network:
+            // a directory configuration skips the downloader entirely.
             return try await LLMModelFactory.shared.loadContainer(
-                from: #hubDownloader(),
-                using: #huggingFaceTokenizerLoader(),
+                from: HubDownloader(),
+                using: TransformersTokenizerLoader(),
                 configuration: configuration)
         }
         loadTask = task

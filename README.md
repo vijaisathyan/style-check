@@ -33,7 +33,9 @@ A free, offline Mac app for asking grammar and style questions while editing aca
 
 ## Build and run
 
-**From Xcode (easiest):** open `Package.swift` in Xcode, wait for packages to resolve, choose the **StyleCheck** scheme and **My Mac**, then press **⌘R**.
+**From Xcode (easiest):** open the `style-check` folder in Xcode (File ▸ Open…), wait for packages to resolve, choose the **StyleCheck** scheme and **My Mac**, then press **⌘R**.
+
+On the first build Xcode may ask to download its **Metal Toolchain**. Accept it: MLX needs it to compile its GPU kernels. The first build compiles MLX from source and takes several minutes on an M1 Air; later builds are quick.
 
 **As a standalone app:**
 
