@@ -1,0 +1,12 @@
+.build/
+dist/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+.DS_Store
+# Never commit model weights or copyrighted style guides
+*.safetensors
+*.gguf
+models/
+guides-private/
