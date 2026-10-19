@@ -3,6 +3,7 @@ import HuggingFace
 import MLX
 import MLXLLM
 import MLXLMCommon
+import StyleCheckCore
 import SwiftUI
 import Tokenizers
 
@@ -59,25 +60,54 @@ final class ModelManager: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
-        selectedModelID = defaults.string(forKey: Keys.selectedModel) ?? ModelCatalog.recommended.id
+        let savedChoice = defaults.string(forKey: Keys.selectedModel)
+        selectedModelID = savedChoice ?? ModelCatalog.recommended.id
         unloadWhenIdle = defaults.object(forKey: Keys.unloadWhenIdle) as? Bool ?? true
         idleMinutes = defaults.object(forKey: Keys.idleMinutes) as? Int ?? 10
         answerLength = AnswerLength(rawValue: defaults.string(forKey: Keys.answerLength) ?? "") ?? .normal
         // Return freed GPU buffers to the system quickly instead of hoarding them.
         Memory.cacheLimit = 64 * 1024 * 1024
+        // First launch: if the recommended model isn't on this Mac but another
+        // supported model already is, start with that one instead of asking to download.
+        if savedChoice == nil, !isInstalled(selectedModel),
+            let available = ModelCatalog.all.first(where: { isInstalled($0) })
+        {
+            selectedModelID = available.id
+        }
         refreshStatus()
     }
 
     // MARK: - Installation
 
+    /// Where a model's files are on disk, if it is installed.
+    /// Checks the folder recorded at download time first, then looks for a copy
+    /// already in the shared Hugging Face cache (from an earlier build of the
+    /// app, another app, or Python tools) and remembers it.
     func directory(for model: LocalModel) -> URL? {
-        guard let path = UserDefaults.standard.string(forKey: "modelDirectory.\(model.id)") else {
-            return nil
+        if let path = UserDefaults.standard.string(forKey: "modelDirectory.\(model.id)") {
+            let url = URL(fileURLWithPath: path, isDirectory: true)
+            if ModelCache.isComplete(url) { return url }
         }
-        let url = URL(fileURLWithPath: path, isDirectory: true)
-        let config = url.appendingPathComponent("config.json")
-        guard FileManager.default.fileExists(atPath: config.path) else { return nil }
-        return url
+        if let found = ModelCache.findSnapshot(repoID: model.id, in: Self.cacheRoots) {
+            setDirectory(found, for: model)
+            return found
+        }
+        return nil
+    }
+
+    /// Hugging Face cache folders to search, in order: the location the
+    /// downloader uses (honors HF_HUB_CACHE / HF_HOME), then the standard
+    /// home-folder and Library locations.
+    static var cacheRoots: [URL] {
+        var roots: [URL] = []
+        if let configured = CacheLocationProvider.environment.resolve() { roots.append(configured) }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        roots.append(home.appendingPathComponent(".cache/huggingface/hub", isDirectory: true))
+        if let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            roots.append(caches.appendingPathComponent("huggingface/hub", isDirectory: true))
+        }
+        var seen = Set<String>()
+        return roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     func isInstalled(_ model: LocalModel) -> Bool { directory(for: model) != nil }
