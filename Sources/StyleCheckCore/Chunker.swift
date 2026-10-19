@@ -5,6 +5,9 @@ import Foundation
 /// heading text is also kept in the passage so a wrong guess loses nothing.
 public enum Chunker {
 
+    /// - Parameters:
+    ///   - targetWords: a passage is closed once adding the next sentence would pass this
+    ///   - maxWords: longest run of text kept together when there are no sentence breaks
     public static func chunk(
         sections: [TextSection],
         targetWords: Int = 170,
@@ -12,25 +15,21 @@ public enum Chunker {
     ) -> [GuideChunk] {
         var chunks: [GuideChunk] = []
         var heading: String?
+        let minimumWords = 25  // avoid tiny fragments in the middle of a section
 
         for section in sections {
             var buffer = ""
             var bufferWords = 0
             var bufferHeading = heading
 
-            func flush(force: Bool) {
+            func flush() {
                 let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else {
-                    buffer = ""
-                    bufferWords = 0
-                    return
+                if !trimmed.isEmpty {
+                    chunks.append(
+                        GuideChunk(
+                            id: chunks.count, heading: bufferHeading,
+                            location: section.location, text: trimmed))
                 }
-                // Avoid tiny fragments unless we're at the end of a section.
-                if !force && bufferWords < 25 { return }
-                chunks.append(
-                    GuideChunk(
-                        id: chunks.count, heading: bufferHeading,
-                        location: section.location, text: trimmed))
                 buffer = ""
                 bufferWords = 0
                 bufferHeading = heading
@@ -45,39 +44,70 @@ public enum Chunker {
                     ? lines[index + 1].trimmingCharacters(in: .whitespaces) : ""
 
                 if line.isEmpty {
-                    if !buffer.hasSuffix("\n\n") && !buffer.isEmpty { buffer += "\n\n" }
+                    if !buffer.isEmpty && !buffer.hasSuffix("\n\n") { buffer += "\n\n" }
                     previousLine = line
                     continue
                 }
 
                 if let detected = headingText(line, previous: previousLine, next: nextLine) {
                     // A new heading starts a new passage when the current one is substantial.
-                    if bufferWords >= 40 { flush(force: true) }
+                    if bufferWords >= 40 { flush() }
                     heading = detected
                     if bufferWords == 0 { bufferHeading = detected }
                 }
 
-                append(line: line, to: &buffer)
-                bufferWords += wordCount(line)
-                previousLine = line
-
-                if bufferWords >= targetWords {
-                    if let cut = sentenceCut(in: buffer, minWords: targetWords / 2) {
-                        let head = String(buffer[..<cut])
-                        let tail = String(buffer[cut...])
-                        buffer = head
-                        bufferWords = wordCount(head)
-                        flush(force: true)
-                        buffer = tail.trimmingCharacters(in: .whitespaces)
-                        bufferWords = wordCount(buffer)
-                    } else if bufferWords >= maxWords {
-                        flush(force: true)
+                // Long lines (a whole Word paragraph, say) are added a sentence at a time.
+                for piece in pieces(of: line, maxWords: min(targetWords, maxWords)) {
+                    let words = wordCount(piece)
+                    if bufferWords >= minimumWords && bufferWords + words > targetWords {
+                        flush()
                     }
+                    append(line: piece, to: &buffer)
+                    bufferWords += words
                 }
+                previousLine = line
             }
-            flush(force: true)
+            flush()
         }
         return chunks
+    }
+
+    /// Splits a line into sentences, and any sentence longer than `maxWords`
+    /// into runs of at most `maxWords` words.
+    static func pieces(of line: String, maxWords: Int) -> [String] {
+        guard wordCount(line) > 30 else { return [line] }
+        var sentences: [String] = []
+        var current = ""
+        let characters = Array(line)
+        for (i, c) in characters.enumerated() {
+            current.append(c)
+            guard c == "." || c == "?" || c == "!" else { continue }
+            // A sentence ends at . ? ! followed by a space and a capital, digit, or opening mark.
+            guard i + 2 < characters.count, characters[i + 1] == " " else { continue }
+            let next = characters[i + 2]
+            if next.isUppercase || next.isNumber || "“\"‘'([".contains(next) {
+                sentences.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            }
+        }
+        let rest = current.trimmingCharacters(in: .whitespaces)
+        if !rest.isEmpty { sentences.append(rest) }
+
+        var result: [String] = []
+        for sentence in sentences {
+            let words = sentence.split(separator: " ")
+            if words.count <= maxWords {
+                result.append(sentence)
+            } else {
+                var start = 0
+                while start < words.count {
+                    let end = min(start + maxWords, words.count)
+                    result.append(words[start..<end].joined(separator: " "))
+                    start = end
+                }
+            }
+        }
+        return result
     }
 
     // MARK: - Helpers
@@ -113,28 +143,6 @@ public enum Chunker {
 
     static func wordCount(_ text: String) -> Int {
         text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
-    }
-
-    /// Index just after the last sentence end that leaves at least `minWords` before it.
-    static func sentenceCut(in text: String, minWords: Int) -> String.Index? {
-        var best: String.Index?
-        var idx = text.startIndex
-        var words = 0
-        var previousWasSpace = true
-        while idx < text.endIndex {
-            let c = text[idx]
-            let isSpace = c == " " || c == "\n"
-            if !isSpace && previousWasSpace { words += 1 }
-            previousWasSpace = isSpace
-            if c == "." || c == "?" || c == "!" {
-                let next = text.index(after: idx)
-                if next == text.endIndex || text[next] == " " || text[next] == "\n" {
-                    if words >= minWords { best = next }
-                }
-            }
-            idx = text.index(after: idx)
-        }
-        return best
     }
 
     /// Returns cleaned heading text when the line looks like a heading.

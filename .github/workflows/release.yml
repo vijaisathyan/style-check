@@ -89,13 +89,32 @@ jobs:
 
       - name: Unit tests
         run: |
-          xcodebuild test \
-            -scheme StyleCheck-Package \
-            -destination 'platform=macOS,arch=arm64' \
-            -derivedDataPath .build/xcode \
-            -skipPackagePluginValidation \
-            -only-testing:StyleCheckCoreTests \
-            -quiet
+          set -o pipefail
+          rm -rf "$RUNNER_TEMP/tests.xcresult"
+          if ! xcodebuild test \
+              -scheme StyleCheck-Package \
+              -destination 'platform=macOS,arch=arm64,variant=macos' \
+              -derivedDataPath .build/xcode \
+              -skipPackagePluginValidation \
+              -only-testing:StyleCheckCoreTests \
+              -resultBundlePath "$RUNNER_TEMP/tests.xcresult" \
+              -quiet; then
+            echo "::group::Failed tests"
+            xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/tests.xcresult" \
+              | python3 -c 'import json,sys
+          def walk(n, path=""):
+              name = n.get("name", "")
+              if n.get("nodeType") == "Test Case" and n.get("result") == "Failed":
+                  print("FAILED:", path + name)
+                  for c in n.get("children", []):
+                      if c.get("nodeType") == "Failure Message": print("   ", c.get("name"))
+              for c in n.get("children", []): walk(c, path + (name + " / " if n.get("nodeType") in ("Test Suite", "Unit test bundle") else ""))
+          for n in json.load(sys.stdin).get("testNodes", []): walk(n)' || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/tests.xcresult" \
+            | python3 -c 'import json,sys; s=json.load(sys.stdin); print("Tests:", s.get("passedTests"), "passed,", s.get("failedTests"), "failed")' || true
 
       - name: Make disk image
         env:

@@ -65,6 +65,13 @@ final class ChunkerTests: XCTestCase {
         XCTAssertEqual(chunks.first?.location, "p. 3")
     }
 
+    func testSplitsTextWithoutSentenceBreaks() {
+        let text = String(repeating: "word ", count: 600)
+        let chunks = Chunker.chunk(sections: [TextSection(text: text)])
+        XCTAssertGreaterThanOrEqual(chunks.count, 3)
+        XCTAssertTrue(chunks.allSatisfy { Chunker.wordCount($0.text) <= 200 })
+    }
+
     func testDetectsHeadings() {
         let text = "Intro text ends here.\n\nCapitalization\nCapitalize proper nouns in all cases and contexts that matter."
         let chunks = Chunker.chunk(sections: [TextSection(text: text)], targetWords: 5, maxWords: 50)
