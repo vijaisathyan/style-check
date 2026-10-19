@@ -12,7 +12,9 @@ let package = Package(
         .macOS(.v15)
     ],
     products: [
-        .executable(name: "StyleCheck", targets: ["StyleCheck"])
+        .executable(name: "StyleCheck", targets: ["StyleCheck"]),
+        // Exposed so Xcode generates the "StyleCheck-Package" scheme that runs the tests.
+        .library(name: "StyleCheckCore", targets: ["StyleCheckCore"]),
     ],
     dependencies: [
         // On-device LLM inference on Apple silicon (Apple's MLX).
