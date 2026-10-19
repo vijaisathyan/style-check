@@ -47,12 +47,12 @@ public enum ModelCache {
     public static func isComplete(_ dir: URL) -> Bool {
         let fm = FileManager.default
         func nonEmpty(_ name: String) -> Bool {
+            // stat() follows symlinks (snapshot files link into blobs/), so a link
+            // whose download never finished counts as missing.
+            var info = stat()
             let path = dir.appendingPathComponent(name).path
-            // Resolves symlinks into blobs/, so a dangling link counts as missing.
-            guard let attrs = try? fm.attributesOfItem(atPath: (path as NSString).resolvingSymlinksInPath),
-                let size = attrs[.size] as? NSNumber
-            else { return false }
-            return size.intValue > 0
+            guard stat(path, &info) == 0 else { return false }
+            return (info.st_mode & S_IFMT) == S_IFREG && info.st_size > 0
         }
 
         guard nonEmpty("config.json") else { return false }
