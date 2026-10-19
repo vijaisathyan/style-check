@@ -53,7 +53,8 @@ public enum Chunker {
                     // A new heading starts a new passage when the current one is substantial.
                     if bufferWords >= 40 { flush() }
                     heading = detected
-                    if bufferWords == 0 { bufferHeading = detected }
+                    // A few stray words before the heading join its passage and take its label.
+                    if bufferWords < minimumWords { bufferHeading = detected }
                 }
 
                 // Long lines (a whole Word paragraph, say) are added a sentence at a time.

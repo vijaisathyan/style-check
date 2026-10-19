@@ -14,6 +14,7 @@ public struct SearchIndex: Sendable {
         let chunk: GuideChunk
         let termFrequencies: [String: Int]
         let length: Int
+        let headingTerms: Set<String>
     }
 
     private var entries: [Entry] = []
@@ -40,9 +41,10 @@ public struct SearchIndex: Sendable {
     private mutating func add(guide: StyleGuide, chunk: GuideChunk) {
         var tf: [String: Int] = [:]
         var tokens = Tokenizer.terms(in: chunk.text)
+        var headingTerms: [String] = []
         // Headings say what a passage is about; count them twice.
         if let heading = chunk.heading {
-            let headingTerms = Tokenizer.terms(in: heading)
+            headingTerms = Tokenizer.terms(in: heading)
             tokens += headingTerms + headingTerms
         }
         for token in tokens { tf[token, default: 0] += 1 }
@@ -50,7 +52,8 @@ public struct SearchIndex: Sendable {
         entries.append(
             Entry(
                 guideID: guide.id, guideTitle: guide.title, chunk: chunk,
-                termFrequencies: tf, length: max(tokens.count, 1)))
+                termFrequencies: tf, length: max(tokens.count, 1),
+                headingTerms: Set(headingTerms)))
     }
 
     private mutating func finalize() {
@@ -92,8 +95,11 @@ public struct SearchIndex: Sendable {
                 score += weight * (tf * (k1 + 1)) / (tf + k1 * norm)
             }
             guard score > 0 else { continue }
-            // Reward passages that cover more of the question.
+            // Reward passages that cover more of the question…
             score *= 1 + 0.15 * Double(matched - 1)
+            // …and passages whose heading names what was asked about.
+            let headingHits = entry.headingTerms.intersection(queryTerms).count
+            score *= 1 + 0.3 * Double(headingHits)
             scored.append((entry, score))
         }
 
@@ -146,7 +152,8 @@ public enum Tokenizer {
         "apostrophe": ["possessive"], "possessive": ["apostrophe"],
         "number": ["numeral"], "numeral": ["number"], "digit": ["numeral"],
         "percent": ["percentage"], "percentage": ["percent"],
-        "ellipse": ["ellipsis"], "dot": ["ellipsis"],
+        "ellipse": ["ellipsis"], "ellipsis": ["ellipses"], "dot": ["ellipsis"],
+        "spac": ["space"],
         "quote": ["quotation"], "quotation": ["quote"],
         "hyphenate": ["hyphen", "compound"], "hyphen": ["hyphenation", "compound"],
         "compound": ["hyphen"],
