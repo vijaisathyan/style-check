@@ -9,6 +9,10 @@ struct StyleCheckApp: App {
     @StateObject private var library = LibraryModel()
     @StateObject private var chat = ChatModel()
 
+    init() {
+        SelfTest.runIfRequested()  // exits when launched with --self-test
+    }
+
     var body: some Scene {
         WindowGroup("Style Check") {
             ContentView()

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Not sandboxed: the app reads style guides the user picks and stores its
+	     library and model in Application Support. Hardened runtime needs no
+	     exceptions; Metal kernels are precompiled into the app. -->
+</dict>
+</plist>

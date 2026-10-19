@@ -8,6 +8,8 @@
 	<string>Style Check</string>
 	<key>CFBundleExecutable</key>
 	<string>StyleCheck</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.vijaisathyan.stylecheck</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -17,16 +19,26 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>__VERSION__</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>__BUILD__</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>LSArchitecturePriority</key>
+	<array>
+		<string>arm64</string>
+	</array>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>LSRequiresNativeExecution</key>
+	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Vijai Sathyanarayanan. MIT License.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
 </dict>
 </plist>

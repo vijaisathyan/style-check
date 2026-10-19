@@ -1,0 +1,132 @@
+name: Build Mac app
+
+# Builds "Style Check.app" and a drag-to-install .dmg on a GitHub-hosted
+# Apple-silicon Mac.
+#  - Every push to main and every manual run: the .dmg is attached to the
+#    workflow run as a downloadable artifact.
+#  - Pushing a tag like v0.2.0: the .dmg is also published as a GitHub Release.
+#
+# Optional Developer ID signing + notarization (removes the "cannot verify"
+# prompt on other Macs). Add these repository secrets to enable it:
+#   MACOS_CERTIFICATE_P12        base64 of a "Developer ID Application" .p12
+#   MACOS_CERTIFICATE_PASSWORD   password of that .p12
+#   DEVELOPER_ID                 e.g. "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   for notarization
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      HAS_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select newest Xcode
+        run: |
+          XCODE="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Install Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain || echo "Metal Toolchain already present"
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .build/xcode/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.1.0" >> "$GITHUB_ENV"
+          fi
+          echo "BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Import signing certificate
+        if: env.HAS_CERT == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+      - name: Build app
+        env:
+          DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
+        run: ./scripts/make-app.sh
+
+      - name: Self-test the packaged app
+        run: '"dist/Style Check.app/Contents/MacOS/StyleCheck" --self-test'
+
+      - name: Unit tests
+        run: |
+          xcodebuild test \
+            -scheme StyleCheck-Package \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .build/xcode \
+            -skipPackagePluginValidation \
+            -only-testing:StyleCheckCoreTests \
+            -quiet
+
+      - name: Make disk image
+        env:
+          SKIP_BUILD: "1"
+          DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: ./scripts/make-dmg.sh
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: StyleCheck-${{ env.VERSION }}-build${{ env.BUILD_NUMBER }}
+          path: |
+            dist/*.dmg
+            dist/*.dmg.sha256
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.dmg.sha256
+          body: |
+            ## Install
+            1. Download **StyleCheck-${{ env.VERSION }}.dmg** below and open it.
+            2. Drag **Style Check** onto **Applications**.
+            3. Open it from Applications. If macOS says it can't verify the app, go to **System Settings ▸ Privacy & Security** and click **Open Anyway** (one time only).
+            4. On first launch, download a model (1–2.3 GB). After that it works offline.
+
+            **Requires:** a Mac with Apple silicon (M1 or later), macOS 15 or later, 8 GB memory, ~3 GB free disk.

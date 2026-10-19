@@ -24,31 +24,41 @@ A free, offline Mac app for asking grammar and style questions while editing aca
   - [GPO Style Manual (2016)](https://www.govinfo.gov/app/details/GPO-STYLEMANUAL-2016), the US government's manual covering grammar, punctuation, capitalization, and numbers. Some of its conventions differ from Chicago's; answers say which guide they come from.
   - Your journal's own house style sheet or author guidelines.
 
-## Requirements
+## Install
 
-- Apple-silicon Mac (M1 or later), 8 GB of memory or more
-- macOS 15 or later
-- Xcode 26 or later (to build)
-- About 3 GB of free disk space for the model
+1. Download the latest **StyleCheck-x.y.z.dmg** from [Releases](https://github.com/vijaisathyan/style-check/releases).
+2. Open it and drag **Style Check** onto **Applications**.
+3. Open Style Check from Applications. The first time, macOS may say it can't verify the app, because it isn't signed with a paid Apple Developer ID. Go to **System Settings ▸ Privacy & Security**, scroll down, and click **Open Anyway**. You only do this once.
 
-## Build and run
+**Requirements:** a Mac with Apple silicon (M1 or later), macOS 15 or later, 8 GB of memory, and about 3 GB of free disk space. Intel Macs aren't supported, because the MLX model engine runs only on Apple-silicon GPUs.
 
-**From Xcode (easiest):** open the `style-check` folder in Xcode (File ▸ Open…), wait for packages to resolve, choose the **StyleCheck** scheme and **My Mac**, then press **⌘R**.
+## Build from source
 
-On the first build Xcode may ask to download its **Metal Toolchain**. Accept it: MLX needs it to compile its GPU kernels. The first build compiles MLX from source and takes several minutes on an M1 Air; later builds are quick.
+You need Xcode 26 or later.
 
-**As a standalone app:**
+**In Xcode:** open the `style-check` folder (File ▸ Open…), wait for packages to resolve, choose the **StyleCheck** scheme and **My Mac**, then press **⌘R**. On the first build, accept Xcode's offer to download the **Metal Toolchain**; MLX needs it to compile its GPU kernels. The first build compiles MLX from source and takes several minutes on an M1 Air.
+
+**As an app and disk image:**
 
 ```bash
 git clone https://github.com/vijaisathyan/style-check.git
 cd style-check
-./scripts/make-app.sh
-open "dist/Style Check.app"
+./scripts/make-dmg.sh          # builds dist/Style Check.app and dist/StyleCheck-<version>.dmg
 ```
 
-Move `dist/Style Check.app` into Applications to keep it. The first build downloads the MLX packages and takes several minutes.
+`./scripts/make-app.sh` builds just the app. Use Xcode or `xcodebuild`, not `swift build`: only Xcode's build system compiles MLX's Metal shaders.
 
-> Use Xcode or `xcodebuild`, not `swift build`. MLX's GPU kernels (Metal shaders) are compiled only by Xcode's build system.
+### Releases
+
+GitHub Actions builds the app on an Apple-silicon Mac for every push to `main` (the disk image is attached to the workflow run) and publishes a Release for every version tag:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+Each build runs `StyleCheck --self-test` on the packaged app, which checks that the bundled Metal shaders load and the GPU works.
+
+**Removing the "Open Anyway" step (optional):** with an Apple Developer Program membership, add the repository secrets listed at the top of `.github/workflows/release.yml`. Builds are then signed with your Developer ID and notarized by Apple, so the app opens on any Mac without warnings.
 
 ## First launch
 
